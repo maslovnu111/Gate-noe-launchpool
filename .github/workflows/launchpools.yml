@@ -1,0 +1,46 @@
+name: Gate Launchpool Monitor
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # кожні 10 хвилин (час UTC)
+  workflow_dispatch:          # кнопка "Run workflow" для запуску вручну
+
+permissions:
+  contents: write             # потрібно, щоб бот зберігав файл пам'яті назад у репозиторій
+
+concurrency:
+  group: gate-launchpool      # не дає двом запускам виконуватись одночасно
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run monitor
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python check_launchpools.py
+
+      - name: Commit state if changed
+        run: |
+          if [[ -n "$(git status --porcelain seen_gate_launchpools.json)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add seen_gate_launchpools.json
+            git commit -m "Update seen Gate launchpools [skip ci]"
+            git push
+          else
+            echo "Змін у файлі пам'яті немає — комітити нічого."
+          fi
